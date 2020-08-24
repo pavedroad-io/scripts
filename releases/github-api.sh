@@ -139,8 +139,6 @@ read_rel_tag_id() {
 
 create_release() {
     set_body
-    echo body:
-    echo $body
     response=$(curl -sH "$github_auth" -d "$body" $github_rels)
     field=name show_item
     field=id show_item
