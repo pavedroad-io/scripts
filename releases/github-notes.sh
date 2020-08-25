@@ -18,8 +18,7 @@ release_notes() {
         # get all commits in range
         for rev in $(git rev-list $range); do
             if git notes --ref $ref list $rev &> /dev/null; then
-                note=$(git notes --ref $ref show $rev)
-                echo "- $note"
+                git notes --ref $ref show $rev | sed -e '/^$/d' -e 's/^/- /'
             fi
         done
     done
