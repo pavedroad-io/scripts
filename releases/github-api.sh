@@ -309,6 +309,7 @@ branch="master"
 draft=false
 prerel=false
 github_url="https://github.com/"
+github_ssh="git@github.com:"
 github_api="https://api.github.com"
 github_upl="https://uploads.github.com"
 
@@ -378,10 +379,11 @@ if [ -z $repo ]; then
         exit 1
     fi
     if [[ "$remote_url" =~ ^git* ]] ; then
-        repo=$(echo "$remote_url" | sed -E -e "s#git@github.com:##" | sed -E -e 's/.git$//')
+        prefix=$github_ssh
     else
-        repo=$(echo "$remote_url" | sed -E -e "s#$github_url##" | sed -E -e 's/.git$//')
+        prefix=$github_url
     fi
+    repo=$(echo "$remote_url" | sed -e "s#$prefix##" -e 's/.git$//')
     message current repo = $repo
 else
     message option repo = $repo
