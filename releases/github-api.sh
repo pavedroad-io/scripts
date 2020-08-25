@@ -314,28 +314,28 @@ github_upl="https://uploads.github.com"
 
 # get options
 while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
-	case ${opt} in
-		a) asset="true";;
-		b) branch="$OPTARG";;
-		c) command="$OPTARG";;
-		d) draft=true;;
-		f) file="$OPTARG";;
-		F) notes_file="$OPTARG";;
-		i) release_id="$OPTARG";;
-		h) usage;;
-		I) asset_id="$OPTARG";;
-		l) latest="true";;
-		m) message="$OPTARG";;
-		n) dryrun="true";;
-		p) prerel=true;;
-		r) repo="$OPTARG";;
-		s) silent="true";;
-		t) tag="$OPTARG";;
-		v) verbose="true";;
-		w) warning=true;;
+    case ${opt} in
+        a) asset="true";;
+        b) branch="$OPTARG";;
+        c) command="$OPTARG";;
+        d) draft=true;;
+        f) file="$OPTARG";;
+        F) notes_file="$OPTARG";;
+        i) release_id="$OPTARG";;
+        h) usage;;
+        I) asset_id="$OPTARG";;
+        l) latest="true";;
+        m) message="$OPTARG";;
+        n) dryrun="true";;
+        p) prerel=true;;
+        r) repo="$OPTARG";;
+        s) silent="true";;
+        t) tag="$OPTARG";;
+        v) verbose="true";;
+        w) warning=true;;
         :) usage;;
         \?) usage;;
-	esac
+    esac
 done
 
 if [ ! -z $notes_file ]; then
@@ -347,7 +347,7 @@ if [ ! -z $notes_file ]; then
 fi
 
 if [ ! -z $command ]; then
-	case ${command} in
+    case ${command} in
         create|read|update|delete)
             if [ "$asset" == "true" ]; then
                 message command = $command asset
@@ -359,7 +359,7 @@ if [ ! -z $command ]; then
             echo Error: Command $command is invalid
             echo command option must be create, read, update, or delete
             exit 1 ;;
-	esac
+    esac
 fi
 
 if [ ! -z $asset_id ]; then
