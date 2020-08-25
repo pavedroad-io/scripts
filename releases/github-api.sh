@@ -402,6 +402,9 @@ validate_token
 
 if [ -z $tag ]; then
     tag=$(latest=true verbose=false read_tags)
+    if [ "$tag" == "null" ]; then
+        err_message No tags found
+    fi
     message latest tag = $tag
 else
     message option tag = $tag
@@ -409,30 +412,36 @@ fi
 
 github_rel_tag="$github_repo/releases/tags/$tag"
 
-if [ -z $release_id ]; then
-    release_id=$(verbose=false read_rel_tag_id)
-    if [ "$release_id" == "null" ]; then
-        err_message Tag has no associated release: $tag
-        release_id=$(latest=true verbose=false read_releases_id)
-        if [ "$release_id" == "null" ]; then
-            err_message Latest release not found
-        else
-            message latest release_id = $release_id
-        fi
-    else
-        message tagged release_id = $release_id
+if [ "$command" == "create" ] && [ "$asset" != "true" ]; then
+    if [ ! -z $release_id ]; then
+        echo Warning: Ignoring release_id when creating release
     fi
 else
-    message option release_id = $release_id
-fi
+    if [ -z $release_id ]; then
+        release_id=$(verbose=false read_rel_tag_id)
+        if [ "$release_id" == "null" ]; then
+            err_message Tag has no associated release: $tag
+            release_id=$(latest=true verbose=false read_releases_id)
+            if [ "$release_id" == "null" ]; then
+                err_message Latest release not found
+            else
+                message latest release_id = $release_id
+            fi
+        else
+            message tagged release_id = $release_id
+        fi
+    else
+        message option release_id = $release_id
+    fi
 
-github_release_id="$github_repo/releases/$release_id"
-github_assets="$github_repo/releases/$release_id/assets"
-github_asset="$github_upl_rels/$release_id/assets?name=$file"
+    github_release_id="$github_repo/releases/$release_id"
+    github_assets="$github_repo/releases/$release_id/assets"
+    github_asset="$github_upl_rels/$release_id/assets?name=$file"
 
-release=$(verbose=false read_rel_id)
-if [ "$release" == "null" ]; then
-    err_message Invalid release_id: $release_id
+    release=$(verbose=false read_rel_id)
+    if [ "$release" == "null" ]; then
+        err_message Invalid release_id: $release_id
+    fi
 fi
 
 if [ "${dryrun}" == "true" ] ; then
