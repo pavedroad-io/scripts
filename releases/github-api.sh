@@ -377,7 +377,11 @@ if [ -z $repo ]; then
         echo "Must supply repo if not in a git repository"
         exit 1
     fi
-    repo=$(echo "$remote_url" | sed -E -e "s#$github_url##" | sed -E -e 's/.git//')
+    if [[ "$remote_url" =~ ^git* ]] ; then
+        repo=$(echo "$remote_url" | sed -E -e "s#git@github.com:##" | sed -E -e 's/.git$//')
+    else
+        repo=$(echo "$remote_url" | sed -E -e "s#$github_url##" | sed -E -e 's/.git$//')
+    fi
     message current repo = $repo
 else
     message option repo = $repo
