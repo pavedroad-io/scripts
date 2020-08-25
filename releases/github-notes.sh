@@ -28,7 +28,6 @@ release_notes() {
 if [ "$#" -eq 0 ]; then
     latest=$(git describe --abbrev=0 --tags)
     tag_count=$(git tag | wc -l)
-    echo tag_count: $tag_count
     if [ $tag_count -eq 1 ]; then
         # if only one tag start with first commit (inclusive)
         previous=$(git rev-list --max-parents=0 HEAD)
