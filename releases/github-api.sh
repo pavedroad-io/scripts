@@ -396,7 +396,6 @@ github_tags="$github_repo/tags"
 github_asset_id="$github_rels/assets/$asset_id"
 github_auth="Authorization: token $PR_GITHUB_RELEASE_TOKEN"
 github_upl_rels="$github_upl/repos/$repo/releases"
-# github_upload="$github_upl_rels/$asset_id/assets?name=$file"
 
 validate_token
 
