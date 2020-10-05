@@ -63,7 +63,7 @@ show_item() {
     if [ "${verbose}" == "true" ] ; then
         echo $response | jq "."
     else
-        echo $response | jq -r ".$field"
+        echo $response | jq -r ".$field" 2> /dev/null
     fi
 }
 
@@ -72,13 +72,13 @@ show_array() {
         if [ "${verbose}" == "true" ] ; then
             echo $response | jq ".[0]"
         else
-            echo $response | jq -r ".[0].$field"
+            echo $response | jq -r ".[0].$field" 2> /dev/null
         fi
     else
         if [ "${verbose}" == "true" ] ; then
             echo $response | jq "."
         else
-            echo $response | jq -r ".[].$field"
+            echo $response | jq -r ".[].$field" 2> /dev/null
         fi
     fi
 }
@@ -182,58 +182,48 @@ read_assets_id() {
 }
 
 read_asset_file_id() {
-    if [ -z "$file" ]; then
-        echo Error: read_asset_file_id: File must be specified
+    if [ -z "$asset_file" ]; then
+        echo Error: read_asset_file_id: Must specify asset_file
         return 1
     fi
     response=$(curl -sH "$github_auth" $github_assets)
-    response=$(echo $response | jq --arg f "$file" '.[] | select(.name == $f)')
+    response=$(echo $response | jq --arg f "$asset_file" '.[] | select(.name == $f)')
     field=id show_item
 }
 
 identify_asset() {
     [ "$identify" == "false" ] && return 0
-    if [ -z "$file" ] && [ -z "$asset_id" ]; then
-        echo Error: identify_asset: File or asset_id must be specified
+    if [ -z "$asset_file" ] && [ -z "$asset_id" ]; then
+        echo Error: identify_asset: Must specify asset_file or asset_id
         return 1
     fi
 
     if [ -z "$asset_id" ]; then
         local my_asset_id=$(verbose=false read_asset_file_id)
         if [ -z $my_asset_id ] || [ "$my_asset_id" == "null" ]; then
-            echo Error: identify_asset: File is not an asset: $file
+            echo Error: identify_asset: File is not an asset: $asset_file
             return 1
         fi
         asset_id=$my_asset_id
     fi
 
-    local my_file=$(verbose=false identify=false read_asset)
-    if [ "$my_file" == "null" ]; then
-        echo Error: identify_asset: asset_id is not valid
-        return 1
+    if [ -z "$asset_file" ]; then
+        asset_file=$asset_id_file
     fi
-    if [ -z "$file" ]; then
-        file=$my_file
-    fi
-    asset_file=$my_file
 }
 
 create_asset() {
-    if [ -z "$file" ]; then
-        echo Error: create_asset: File must be specified
-        return 1
-    fi
-    if [ ! -f "$file" ]; then
-        echo Error: create_asset: Asset file does not exist: $file
+    if [ -z "$asset_file" ]; then
+        echo Error: create_asset: Must specify asset_file
         return 1
     fi
     local my_asset_id=$(verbose=false read_asset_file_id)
     if [ ! -z "$my_asset_id" ] ; then
-        echo Error: create_asset: Asset file already exists: $file
+        echo Error: create_asset: Asset file already exists: $asset_file
         return 1
     fi
     local type="Content-Type: application/octet-stream"
-    response=$(curl --data-binary @"$file" -sH "$github_auth" -H "$type" $github_asset)
+    response=$(curl --data-binary @"$asset_file" -sH "$github_auth" -H "$type" $github_asset)
     field=name show_item
     field=id show_item
 }
@@ -241,8 +231,8 @@ create_asset() {
 read_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ "$identify" == "true" ] && [ "$asset_file" != "$file" ]; then
-        echo Error: read_asset: $asset_file does not match option file: $file
+    if [ "$identify" == "true" ] && [ "$asset_id_file" != "$asset_file" ]; then
+        echo Error: read_asset: $asset_id_file does not match option file: $asset_file
         return 1
     fi
 
@@ -254,34 +244,30 @@ read_asset() {
 update_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ ! -f "$file" ]; then
-        echo Error: update_asset: File does not exist: $file
-        return 1
-    fi
-    if [ "$asset_file" == "$file" ]; then
-        echo Updating file: $file
+    if [ "$asset_id_file" == "$asset_file" ]; then
+        echo Updating file: $asset_file
     else
         local my_asset_id=$(verbose=false read_asset_file_id)
         if [ -z "$my_asset_id" ] ; then
-            echo Replacing file: $asset_file with: $file
+            echo Replacing file: $asset_id_file with: $asset_file
         else
-            echo Error: update_asset: Asset file already exists: $file
+            echo Error: update_asset: Asset file already exists: $asset_file
             return 1
         fi
     fi
 
     github_asset_id="$github_rels/assets/$asset_id"
-    identify=false asset_file="$file" delete_asset
+    identify=false asset_id_file="$asset_file" delete_asset
 
-    github_asset="$github_upl_rels/$release_id/assets?name=$file"
+    github_asset="$github_upl_rels/$release_id/assets?name=$asset_file"
     identify=false create_asset
 }
 
 delete_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ "$identify" == "true" ] && [ "$asset_file" != "$file" ]; then
-        echo Error: delete_asset: $asset_file does not match option file: $file
+    if [ "$identify" == "true" ] && [ "$asset_id_file" != "$asset_file" ]; then
+        echo Error: delete_asset: $asset_id_file does not match option file: $asset_file
         return 1
     fi
 
@@ -308,10 +294,6 @@ err_message() {
 branch="master"
 draft=false
 prerel=false
-github_url="https://github.com/"
-github_ssh="git@github.com:"
-github_api="https://api.github.com"
-github_upl="https://uploads.github.com"
 
 # get options
 while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
@@ -320,7 +302,7 @@ while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
         b) branch="$OPTARG";;
         c) command="$OPTARG";;
         d) draft=true;;
-        f) file="$OPTARG";;
+        f) asset_file="$OPTARG";;
         F) notes_file="$OPTARG";;
         i) release_id="$OPTARG";;
         h) usage;;
@@ -339,14 +321,6 @@ while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
     esac
 done
 
-if [ ! -z $notes_file ]; then
-    if [ ! -f "$notes_file" ]; then
-        echo Error: Notes file does not exist: $notes_file
-        exit 1
-    fi
-    message=$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\r\\n/g' $notes_file)
-fi
-
 if [ ! -z $command ]; then
     case ${command} in
         create|read|update|delete)
@@ -357,31 +331,27 @@ if [ ! -z $command ]; then
             fi
             ;;
         *)
-            echo Error: Command $command is invalid
+            echo Error: Invalid command: $command
             echo command option must be create, read, update, or delete
-            exit 1 ;;
+            exit 1
+            ;;
     esac
 fi
 
-if [ ! -z $asset_id ]; then
-    message asset_id = $asset_id
-fi
-
-if [ ! -z $file ]; then
-    message file = $file
-fi
+github_https_url="https://github.com/"
+github_ssh_url="git@github.com:"
 
 if [ -z $repo ]; then
     # check remote repo url
     remote_url=$(git config --get remote.origin.url)
     if [ -z $remote_url ]; then
-        echo "Must supply repo if not in a git repository"
+        echo "Must specify repo if not in a git repository"
         exit 1
     fi
-    if [[ "$remote_url" =~ ^git* ]] ; then
-        prefix=$github_ssh
+    if [[ "$remote_url" =~ ^$github_https_url* ]] ; then
+        prefix=$github_https_url
     else
-        prefix=$github_url
+        prefix=$github_ssh_url
     fi
     repo=$(echo "$remote_url" | sed -e "s#$prefix##" -e 's/.git$//')
     message current repo = $repo
@@ -395,6 +365,8 @@ else
     message option branch = $branch
 fi
 
+github_api="https://api.github.com"
+github_upl="https://uploads.github.com"
 github_repo="$github_api/repos/$repo"
 github_rels="$github_repo/releases"
 github_latest="$github_repo/releases/latest"
@@ -441,12 +413,38 @@ else
 
     github_release_id="$github_repo/releases/$release_id"
     github_assets="$github_repo/releases/$release_id/assets"
-    github_asset="$github_upl_rels/$release_id/assets?name=$file"
+    github_asset="$github_upl_rels/$release_id/assets?name=$asset_file"
 
     release=$(verbose=false read_rel_id)
     if [ "$release" == "null" ]; then
         err_message Invalid release_id: $release_id
     fi
+fi
+
+if [ ! -z $asset_id ]; then
+    asset_id_file=$(verbose=false identify=false read_asset)
+    if [ "$asset_id_file" == "null" ]; then
+        echo Error: identify_asset: Invalid asset_id: $asset_id
+        exit 1
+    fi
+    message option asset_id = $asset_id
+fi
+
+if [ ! -z $asset_file ]; then
+    if [ ! -f "$asset_file" ]; then
+        echo Error: Asset file not found: $asset_file
+        exit 1
+    fi
+    message option asset_file = $asset_file
+fi
+
+if [ ! -z $notes_file ]; then
+    if [ ! -f "$notes_file" ]; then
+        echo Error: Notes file not found: $notes_file
+        exit 1
+    fi
+    message option notes_file = $notes_file
+    message=$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\r\\n/g' $notes_file)
 fi
 
 if [ "${dryrun}" == "true" ] ; then
