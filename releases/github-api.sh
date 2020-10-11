@@ -24,7 +24,7 @@ Valid options:
 -m <message>
 -n dryrun set
 -p prerelease set
--q quite set
+-q quiet set
 -r <repo>
 -s <source_type>
 -t <tag>
@@ -201,6 +201,18 @@ read_asset_file_id() {
     fi
 }
 
+read_asset_id_file() {
+    if [ -z "$asset_id" ]; then
+        echo Error: read_asset_id_file: Must specify asset_id
+        return 1
+    fi
+    response=$(curl -sH "$github_auth" $github_assets)
+    response=$(echo $response | jq --arg f $asset_id '.[] | select(.id == ($f|tonumber))')
+    if [ "$response" != "" ] ; then
+        field=name show_item
+    fi
+}
+
 identify_asset() {
     [ "$identify" == "false" ] && return 0
     if [ -z "$asset_file" ] && [ -z "$asset_id" ]; then
@@ -209,16 +221,18 @@ identify_asset() {
     fi
 
     if [ -z "$asset_id" ]; then
-        local my_asset_id=$(verbose=false read_asset_file_id)
-        if [ "$my_asset_id" == "" ] || [ "$my_asset_id" == "null" ]; then
+        if [ "$asset_file_id" == "" ]; then
             echo Error: Invalid asset_file for release $tag: $asset_file
             return 1
         fi
-        asset_id=$my_asset_id
+        asset_id=$asset_file_id
     fi
 
     if [ -z "$asset_file" ]; then
         asset_file=$asset_id_file
+    elif [ ! -z "$asset_id_file" ] && [ "$asset_id_file" != "$asset_file" ]; then
+        echo Error: asset_file: $asset_file must match asset_id file: $asset_id_file
+        return 1
     fi
 }
 
@@ -227,10 +241,16 @@ create_asset() {
         echo Error: create_asset: Must specify asset_file
         return 1
     fi
-    local my_asset_id=$(verbose=false read_asset_file_id)
-    if [ ! -z "$my_asset_id" ] ; then
-        echo Error: create_asset: asset_file already exists: $asset_file
+    if [ ! -f "$asset_file" ]; then
+        echo Error: create_asset: asset_file not found: $asset_file
         return 1
+    fi
+    if [ "$asset_file_id" != "" ] ; then
+        echo Error: create_asset: asset_file already created: $asset_file
+        return 1
+    fi
+    if [ "$asset_id" != "" ] ; then
+        echo Warning: create_asset: asset_id ignored: $asset_id
     fi
     local type="Content-Type: application/octet-stream"
     response=$(curl --data-binary @"$asset_file" -sH "$github_auth" -H "$type" $github_asset)
@@ -241,10 +261,6 @@ create_asset() {
 read_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ "$identify" == "true" ] && [ "$asset_id_file" != "$asset_file" ]; then
-        echo Error: read_asset: $asset_id_file does not match option file: $asset_file
-        return 1
-    fi
 
     github_asset_id="$github_rels/assets/$asset_id"
     response=$(curl -sH "$github_auth" $github_asset_id)
@@ -254,20 +270,13 @@ read_asset() {
 update_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ "$asset_id_file" == "$asset_file" ]; then
-        echo Updating file: $asset_file
-    else
-        local my_asset_id=$(verbose=false read_asset_file_id)
-        if [ -z "$my_asset_id" ] ; then
-            echo Replacing file: $asset_id_file with: $asset_file
-        else
-            echo Error: update_asset: asset_file already exists: $asset_file
-            return 1
-        fi
+    if [ ! -f "$asset_file" ]; then
+        echo Error: update_asset: asset_file not found: $asset_file
+        return 1
     fi
 
     github_asset_id="$github_rels/assets/$asset_id"
-    identify=false asset_id_file="$asset_file" delete_asset
+    identify=false delete_asset
 
     github_asset="$github_upl_rels/$release_id/assets?name=$asset_file"
     identify=false create_asset
@@ -276,10 +285,6 @@ update_asset() {
 delete_asset() {
     identify_asset
     [ $? -ne 0 ] && return 1
-    if [ "$identify" == "true" ] && [ "$asset_id_file" != "$asset_file" ]; then
-        echo Error: delete_asset: $asset_id_file does not match option file: $asset_file
-        return 1
-    fi
 
     github_asset_id="$github_rels/assets/$asset_id"
     response=$(curl -X "DELETE" -sH "$github_auth" $github_asset_id)
@@ -457,22 +462,24 @@ else
 fi
 
 if [ ! -z $asset_id ]; then
-    response=$(curl -sH "$github_auth" $github_assets)
-    response=$(echo $response | jq --arg f $asset_id '.[] | select(.id == ($f|tonumber))')
-    if [ "$response" == "" ]; then
+    # If asset_id in release then get asset_id_file
+    # Note: asset_id must exist, cannot be created
+    asset_id_file=$(read_asset_id_file)
+    if [ "$asset_id_file" == "" ]; then
         echo Error: Invalid asset_id for release $tag: $asset_id
         exit 1
     fi
     message option asset_id = $asset_id
+    message asset_id file = $asset_id_file
 fi
 
 if [ ! -z $asset_file ]; then
-    if [[ "$asset" == "true" && ( "$command" == "create" ||
-        "$command" == "update" ) && ! -f "$asset_file" ]]; then
-        echo Error: asset_file not found: $asset_file
-        exit 1
-    fi
+    # If asset_file in release then get asset_file_id
+    asset_file_id=$(read_asset_file_id)
     message option asset_file = $asset_file
+    if [ "$asset_file_id" != "" ]; then
+        message asset_file id = $asset_file_id
+    fi
 fi
 
 if [ ! -z $notes_file ]; then
