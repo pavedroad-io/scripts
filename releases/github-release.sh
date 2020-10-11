@@ -4,7 +4,7 @@ asset="false"
 
 source github-api.sh
 
-if [ "$silent" != "true" ]; then
+if [ "$quiet" != "true" ]; then
     echo; echo Release tags:
     latest=false read_tags
 

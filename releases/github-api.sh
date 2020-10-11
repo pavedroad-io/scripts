@@ -3,6 +3,9 @@
 # Thus no #!/usr/bin/env bash
 # In order to not spawn another shell
 
+tarball=tgz
+zipball=zip
+
 usage() {
 cat << EOF
 Usage: $(basename $0) [<option> ... <option value> ...]
@@ -21,16 +24,21 @@ Valid options:
 -m <message>
 -n dryrun set
 -p prerelease set
+-q quite set
 -r <repo>
--s silent set
+-s <source_type>
 -t <tag>
+-u url_only set
 -v verbose set
 -w warning set
-Valid command arguments:
+Valid commands:
 -c create
 -c read
 -c update
 -c delete
+Valid source_types:
+-s $tarball
+-s $zipball
 EOF
 exit 1
 }
@@ -188,20 +196,22 @@ read_asset_file_id() {
     fi
     response=$(curl -sH "$github_auth" $github_assets)
     response=$(echo $response | jq --arg f "$asset_file" '.[] | select(.name == $f)')
-    field=id show_item
+    if [ "$response" != "" ] ; then
+        field=id show_item
+    fi
 }
 
 identify_asset() {
     [ "$identify" == "false" ] && return 0
     if [ -z "$asset_file" ] && [ -z "$asset_id" ]; then
-        echo Error: identify_asset: Must specify asset_file or asset_id
+        echo Error: Must specify asset_file or asset_id
         return 1
     fi
 
     if [ -z "$asset_id" ]; then
         local my_asset_id=$(verbose=false read_asset_file_id)
-        if [ -z $my_asset_id ] || [ "$my_asset_id" == "null" ]; then
-            echo Error: identify_asset: File is not an asset: $asset_file
+        if [ "$my_asset_id" == "" ] || [ "$my_asset_id" == "null" ]; then
+            echo Error: Invalid asset_file for release $tag: $asset_file
             return 1
         fi
         asset_id=$my_asset_id
@@ -219,7 +229,7 @@ create_asset() {
     fi
     local my_asset_id=$(verbose=false read_asset_file_id)
     if [ ! -z "$my_asset_id" ] ; then
-        echo Error: create_asset: Asset file already exists: $asset_file
+        echo Error: create_asset: asset_file already exists: $asset_file
         return 1
     fi
     local type="Content-Type: application/octet-stream"
@@ -251,7 +261,7 @@ update_asset() {
         if [ -z "$my_asset_id" ] ; then
             echo Replacing file: $asset_id_file with: $asset_file
         else
-            echo Error: update_asset: Asset file already exists: $asset_file
+            echo Error: update_asset: asset_file already exists: $asset_file
             return 1
         fi
     fi
@@ -275,14 +285,37 @@ delete_asset() {
     response=$(curl -X "DELETE" -sH "$github_auth" $github_asset_id)
 }
 
+read_asset_url() {
+    response=$(verbose=true read_asset)
+    if [ $? -ne 0 ]; then
+        echo $response
+        return 1
+    fi
+    field=browser_download_url verbose=false show_item
+}
+
+read_source_url() {
+    response=$(verbose=true read_release)
+    if [ $? -ne 0 ]; then
+        echo $response
+        return 1
+    fi
+
+    if [ "$source_type" = "$tarball" ]; then
+        field=tarball_url verbose=false show_item
+    else
+        field=zipball_url verbose=false show_item
+    fi
+}
+
 message() {
-    [ "$silent" == "true" ] && return
+    [ "$quiet" == "true" ] && return
     echo $*
 }
 
 err_message() {
     if [ "$warning" == "true" ]; then
-        if [ "$silent" != "true" ]; then
+        if [ "$quiet" != "true" ]; then
             echo Warning: $*
         fi
     else
@@ -296,7 +329,7 @@ draft=false
 prerel=false
 
 # get options
-while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
+while getopts ab:c:df:F:hi:I:lm:npqr:s:t:uvw opt; do
     case ${opt} in
         a) asset="true";;
         b) branch="$OPTARG";;
@@ -311,9 +344,11 @@ while getopts ab:c:df:F:hi:I:lm:npr:st:vw opt; do
         m) message="$OPTARG";;
         n) dryrun="true";;
         p) prerel=true;;
+        q) quiet="true";;
         r) repo="$OPTARG";;
-        s) silent="true";;
+        s) source_type="$OPTARG";;
         t) tag="$OPTARG";;
+        u) url_only="true";;
         v) verbose="true";;
         w) warning=true;;
         :) usage;;
@@ -422,17 +457,19 @@ else
 fi
 
 if [ ! -z $asset_id ]; then
-    asset_id_file=$(verbose=false identify=false read_asset)
-    if [ "$asset_id_file" == "null" ]; then
-        echo Error: identify_asset: Invalid asset_id: $asset_id
+    response=$(curl -sH "$github_auth" $github_assets)
+    response=$(echo $response | jq --arg f $asset_id '.[] | select(.id == ($f|tonumber))')
+    if [ "$response" == "" ]; then
+        echo Error: Invalid asset_id for release $tag: $asset_id
         exit 1
     fi
     message option asset_id = $asset_id
 fi
 
 if [ ! -z $asset_file ]; then
-    if [ ! -f "$asset_file" ]; then
-        echo Error: Asset file not found: $asset_file
+    if [[ "$asset" == "true" && ( "$command" == "create" ||
+        "$command" == "update" ) && ! -f "$asset_file" ]]; then
+        echo Error: asset_file not found: $asset_file
         exit 1
     fi
     message option asset_file = $asset_file
@@ -445,6 +482,14 @@ if [ ! -z $notes_file ]; then
     fi
     message option notes_file = $notes_file
     message=$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\r\\n/g' $notes_file)
+fi
+
+if [ ! -z $source_type ]; then
+    if [ "$source_type" != "$tarball" ] && [ "$source_type" != "$zipball" ]; then
+        echo Error: Source type must be $tarball or $zipball
+        exit 1
+    fi
+    message option source_type = $source_type
 fi
 
 if [ "${dryrun}" == "true" ] ; then
