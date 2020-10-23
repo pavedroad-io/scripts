@@ -329,7 +329,6 @@ err_message() {
     fi
 }
 
-branch="master"
 draft=false
 prerel=false
 
@@ -399,12 +398,6 @@ else
     message option repo = $repo
 fi
 
-if [ "$branch" == "master" ]; then
-    message default branch = $branch
-else
-    message option branch = $branch
-fi
-
 github_api="https://api.github.com"
 github_upl="https://uploads.github.com"
 github_repo="$github_api/repos/$repo"
@@ -433,6 +426,19 @@ if [ "$command" == "create" ] && [ "$asset" != "true" ]; then
     if [ ! -z $release_id ]; then
         echo Warning: Ignoring release_id when creating release
     fi
+    # branch is required only when creating release
+    if [ -z $branch ]; then
+        # try for repo branch
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        if [ $? -eq 0 ]; then
+            message current branch = $branch
+        else
+            branch="master"
+            message default branch = $branch
+        fi
+    else
+        message option branch = $branch
+    fi
 else
     if [ -z $release_id ]; then
         release_id=$(verbose=false read_rel_tag_id)
@@ -455,10 +461,12 @@ else
     github_assets="$github_repo/releases/$release_id/assets"
     github_asset="$github_upl_rels/$release_id/assets?name=$asset_file"
 
-    release=$(verbose=false read_rel_id)
-    if [ "$release" == "null" ]; then
+    response=$(verbose=true read_rel_id)
+    if [ "$response" == "null" ]; then
         err_message Invalid release_id: $release_id
     fi
+    branch=$(echo $response | jq -r ".target_commitish")
+    message release branch = $branch
 fi
 
 if [ ! -z $asset_id ]; then
