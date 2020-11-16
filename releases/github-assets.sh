@@ -4,7 +4,7 @@ asset="true"
 
 source github-api.sh
 
-if [ "$silent" != "true" ]; then
+if [ "$quiet" != "true" ]; then
     echo; echo Uploaded assets:
     read_assets
 
